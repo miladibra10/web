@@ -1,21 +1,23 @@
 # Agent Personal Website
 
-A modern, terminal-inspired personal website that mimics a coding agent interface (like Junie or Claude). It features a command-driven UI, simulated thinking process, and a touch of humor for generic prompts.
+A modern, terminal-inspired personal website that mimics a coding agent interface. It features a command-driven UI, simulated thinking process, and a touch of humor for generic prompts.
 
 ## 🚀 Features
 
-- **Terminal Simulation**: Uses `xterm.js` for a professional-grade, high-performance terminal experience.
-- **Command Parser**: Custom commands (`help`, `about`, `projects`, `contact`, `clear`) with ANSI color support.
-- **Thinking Simulation**: Simulated background tasks with asynchronous status updates.
-- **Humor Integration**: Funny responses for non-command inputs with simulated API credit checks.
-- **Dark Mode UI**: Sleek, high-contrast dark theme with a scanline effect and a decorative terminal frame.
-- **Responsive Design**: Auto-scaling terminal viewport that adapts to various screen sizes.
+- **Custom Terminal UI**: A high-performance, responsive terminal interface built with React and Tailwind CSS.
+- **Command Parser**: Smart command identification and keyword-based fallback.
+- **Thinking Simulation**: Multi-step asynchronous thinking process (`FETCHING_METADATA`, `PARSING_CMD`, etc.).
+- **Token Tracking**: Real-time "token usage" counter that increases as the agent "generates" responses.
+- **Auto-completion**: Tab-to-complete and arrow-key navigation for command suggestions.
+- **GitHub Integration**: Dynamic fetching of open-source contributions via the GitHub API.
+- **Humor Module**: Sarcastic and funny responses for non-command inputs with simulated credit checks.
+- **Dark Mode UI**: Sleek, high-contrast dark theme with smooth animations powered by Framer Motion.
 
 ## 🛠 Tech Stack
 
-- **Framework**: [React](https://react.dev/) + [Vite](https://vite.dev/)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **Animations**: [Framer Motion](https://www.framer.com/motion/)
+- **Framework**: [React 19](https://react.dev/) + [Vite 8](https://vite.dev/)
+- **Styling**: [Tailwind CSS 3](https://tailwindcss.com/)
+- **Animations**: [Framer Motion 12](https://www.framer.com/motion/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 
 ## 🏃 Getting Started
@@ -40,7 +42,7 @@ A modern, terminal-inspired personal website that mimics a coding agent interfac
 
 ### Running for Development
 
-To start the development server with Hot Module Replacement (HMR):
+To start the development server:
 
 ```bash
 npm run dev
@@ -50,7 +52,7 @@ The app will be available at `http://localhost:5173`.
 
 ### Building for Production
 
-To create a production-ready build:
+To create an optimized production-ready build:
 
 ```bash
 npm run build
@@ -65,17 +67,18 @@ To preview the build locally:
 npm run preview
 ```
 
-## 🧪 Testing
+## 🧪 Testing & Quality Control
 
 ### Manual Testing
 1. **Open the app** in your browser.
-2. **Type `/help`** to see available commands.
-3. **Try other commands** like `/about`, `/projects`, and `/contact`.
-4. **Send a generic message** (e.g., "Hello") to see the humor module in action.
-5. **Check responsiveness** by resizing the browser window.
+2. **Type `/`** to see the command suggestion popover.
+3. **Use Tab or Arrow Keys** to navigate and select commands.
+4. **Try commands** like `/about`, `/projects`, `/contributions`, and `/contact`.
+5. **Send a generic message** (e.g., "Hello") to see the humor module and "API credit" check.
+6. **Clear the terminal** using `/clear` and watch the token count reset.
 
 ### Linting
-To check for code quality and potential issues:
+To check for code quality:
 ```bash
 npm run lint
 ```
@@ -86,11 +89,11 @@ npm run lint
 | :--- | :--- |
 | `/help` | Show all available commands |
 | `/about` | Learn more about the developer |
-| `/projects` | View recent work and deployments |
+| `/projects` | View recent work and personal projects |
+| `/contributions` | Fetch recent open-source contributions from GitHub |
 | `/contact` | Find social links and contact info |
-| `/clear` | Clear the terminal history |
+| `/clear` | Clear the terminal history and reset token count |
 
 ## 📝 License
 
 Distributed under the MIT License.
-# web
