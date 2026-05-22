@@ -10,8 +10,6 @@ A modern, terminal-inspired personal website that mimics a coding agent interfac
 - **Token Tracking**: Real-time "token usage" counter that increases as the agent "generates" responses.
 - **Auto-completion**: Tab-to-complete and arrow-key navigation for command suggestions.
 - **GitHub Integration**: Dynamic fetching of open-source contributions via the GitHub API.
-- **Humor Module**: Sarcastic and funny responses for non-command inputs with simulated credit checks.
-- **Dark Mode UI**: Sleek, high-contrast dark theme with smooth animations powered by Framer Motion.
 
 ## 🛠 Tech Stack
 
@@ -31,8 +29,8 @@ A modern, terminal-inspired personal website that mimics a coding agent interfac
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
-   cd personal-website
+   git clone git@github.com:miladibra10/web.git
+   cd web
    ```
 
 2. Install dependencies:
