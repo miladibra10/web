@@ -116,10 +116,10 @@ const THINKING_STEPS = ["FETCHING_METADATA", "PARSING_CMD", "IDENTIFYING_RESOURC
 const BLOG_URL = 'https://blog.miladibra.com';
 const BLOG_REDIRECT_STEP = 'REDIRECTING';
 const BLOG_REDIRECT_DELAY_MS = 2000;
-// Browsers only allow a new tab for about 5s after the keypress.
-// Keep the blog sequence inside this budget so the tab still opens.
-const BLOG_THINKING_STEP_MS = 350;
-const BLOG_TAB_DEADLINE_MS = 4600;
+// Keep these steps short. Browsers only allow a new tab for a few
+// seconds after the keypress, and the redirect still has to type a
+// message and show progress before that tab opens.
+const BLOG_THINKING_STEP_MS = 300;
 const FALLBACK_STEPS = {
   VERIFYING: 'VERIFYING_API_CREDITS',
   FALLBACK: 'CREDITS_EXHAUSTED_FALLBACK_TO_HUMOR'
@@ -143,6 +143,9 @@ const AI_INTRO_STATEMENTS = [
 function TypingText({ text, speed = 20, onComplete, onToken }) {
   const [displayedText, setDisplayedText] = useState('');
   const [sourceText, setSourceText] = useState(text);
+  const onCompleteRef = useRef(onComplete);
+  const onTokenRef = useRef(onToken);
+  const completedRef = useRef(false);
 
   if (text !== sourceText) {
     setSourceText(text);
@@ -150,7 +153,13 @@ function TypingText({ text, speed = 20, onComplete, onToken }) {
   }
 
   useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onTokenRef.current = onToken;
+  });
+
+  useEffect(() => {
     if (displayedText.length < text.length) {
+      completedRef.current = false;
       const timer = setTimeout(() => {
         const nextChar = text[displayedText.length];
         const nextText = text.slice(0, displayedText.length + 1);
@@ -158,17 +167,20 @@ function TypingText({ text, speed = 20, onComplete, onToken }) {
         // If the added character completes a word (is followed by space or is end of string)
         // Actually, let's just count words in the string. 
         // Or simpler: if nextChar is a space, it's a token. If it's the last char, it's also a token.
-        if (onToken && (nextChar === ' ' || nextText.length === text.length)) {
-          onToken();
+        if (onTokenRef.current && (nextChar === ' ' || nextText.length === text.length)) {
+          onTokenRef.current();
         }
         
         setDisplayedText(nextText);
       }, speed);
       return () => clearTimeout(timer);
-    } else if (onComplete) {
-      onComplete();
     }
-  }, [displayedText, text, speed, onComplete, onToken]);
+
+    if (!completedRef.current && text.length > 0 && displayedText.length === text.length) {
+      completedRef.current = true;
+      onCompleteRef.current?.();
+    }
+  }, [displayedText, text, speed]);
 
   return <>{displayedText}</>;
 }
@@ -246,7 +258,6 @@ function App() {
       runLock.current = true;
       setIsBusy(true);
     }
-    const blogStartedAt = performance.now();
 
     try {
       // Skip thinking for /clear command
@@ -336,33 +347,40 @@ function App() {
 
       setIsThinking(false);
     
-      // If there is an intro, wait for it to finish typing before showing the rest
-      for (let i = 0; i < response.length; i++) {
-        const msg = response[i];
-        setHistory(prev => [...prev, msg]);
-      
-        // Calculate delay: text length * speed + 200ms buffer
-        // Default speed is 30, but different types have different speeds
-        let typingSpeed = 20;
-        if (msg.type === 'header') typingSpeed = 20;
-        if (msg.type === 'info') typingSpeed = 25;
-      
-        const textLength = msg.content ? msg.content.length : 0;
-        let waitTime = (textLength * typingSpeed) + 200;
-        if (msg.type === 'error') waitTime = 0;
-      
-        await new Promise(r => setTimeout(r, waitTime));
+    // If there is an intro, wait for it to finish typing before showing the rest
+    for (let i = 0; i < response.length; i++) {
+      const msg = response[i];
+
+      if (isBlog && msg.type === 'system') {
+        let resolveTyped = () => {};
+        const typed = new Promise(resolve => { resolveTyped = resolve; });
+        setHistory(prev => [...prev, { ...msg, onTyped: resolveTyped }]);
+        await Promise.race([
+          typed,
+          new Promise(resolve => setTimeout(resolve, 8000)),
+        ]);
+        continue;
       }
 
-      if (isBlog) {
-        const elapsed = performance.now() - blogStartedAt;
-        const progressWait = Math.min(
-          BLOG_REDIRECT_DELAY_MS,
-          Math.max(0, BLOG_TAB_DEADLINE_MS - elapsed)
-        );
-        setIsThinking(true);
-        setCurrentStep(BLOG_REDIRECT_STEP);
-        await new Promise(r => setTimeout(r, progressWait));
+      setHistory(prev => [...prev, msg]);
+      
+      // Calculate delay: text length * speed + 200ms buffer
+      // Default speed is 30, but different types have different speeds
+      let typingSpeed = 20;
+      if (msg.type === 'header') typingSpeed = 20;
+      if (msg.type === 'info') typingSpeed = 25;
+      
+      const textLength = msg.content ? msg.content.length : 0;
+      let waitTime = (textLength * typingSpeed) + 200;
+      if (msg.type === 'error') waitTime = 0;
+      
+      await new Promise(r => setTimeout(r, waitTime));
+    }
+
+    if (isBlog) {
+      setIsThinking(true);
+      setCurrentStep(BLOG_REDIRECT_STEP);
+      await new Promise(r => setTimeout(r, BLOG_REDIRECT_DELAY_MS));
 
         const blogTab = window.open(BLOG_URL, '_blank');
         if (blogTab) {
@@ -466,7 +484,7 @@ function App() {
                 
                 {msg.type === 'system' && (
                   <div className="text-sm text-white">
-                    <TypingText text={msg.content} onToken={() => setTokenCount(prev => prev + 1)} />
+                    <TypingText text={msg.content} onToken={() => setTokenCount(prev => prev + 1)} onComplete={msg.onTyped} />
                   </div>
                 )}
 
