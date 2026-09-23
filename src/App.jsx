@@ -24,6 +24,10 @@ const COMMAND_LIST = {
     description: 'View my open-source contributions',
     keywords: ['contribution', 'contributions', 'oss', 'open source', 'pr', 'pull request', 'github', 'open-source']
   },
+  '/blog': {
+    description: 'Open my blog in a new tab',
+    keywords: ['blog', 'blogs', 'article', 'articles', 'writing', 'writings']
+  },
   '/clear': {
     description: 'Clear the terminal history',
     keywords: ['clear', 'clean', 'reset', 'empty', 'wipe']
@@ -97,6 +101,8 @@ const UI_STRINGS = {
   RECENT_PROJECTS_LABEL: 'RECENT PROJECTS:',
   CONTRIBUTIONS_LABEL: 'OPEN SOURCE CONTRIBUTIONS:',
   SYSTEM_NOTIFICATION_PREFIX: '[Error]:',
+  BLOG_REDIRECT_MESSAGE: 'I am going to redirect you to the blog.',
+  BLOG_PROGRESS_SUBTEXT: 'Opening the blog in a new tab.',
 };
 
 const SOCIAL_LINKS = [
@@ -107,6 +113,13 @@ const SOCIAL_LINKS = [
 ];
 
 const THINKING_STEPS = ["FETCHING_METADATA", "PARSING_CMD", "IDENTIFYING_RESOURCES", "EXECUTING"];
+const BLOG_URL = 'https://blog.miladibra.com';
+const BLOG_REDIRECT_STEP = 'REDIRECTING';
+const BLOG_REDIRECT_DELAY_MS = 2000;
+// Browsers only allow a new tab for about 5s after the keypress.
+// Keep the blog sequence inside this budget so the tab still opens.
+const BLOG_THINKING_STEP_MS = 350;
+const BLOG_TAB_DEADLINE_MS = 4600;
 const FALLBACK_STEPS = {
   VERIFYING: 'VERIFYING_API_CREDITS',
   FALLBACK: 'CREDITS_EXHAUSTED_FALLBACK_TO_HUMOR'
@@ -129,11 +142,12 @@ const AI_INTRO_STATEMENTS = [
 
 function TypingText({ text, speed = 20, onComplete, onToken }) {
   const [displayedText, setDisplayedText] = useState('');
+  const [sourceText, setSourceText] = useState(text);
 
-  useEffect(() => {
-    // Reset when text changes
+  if (text !== sourceText) {
+    setSourceText(text);
     setDisplayedText('');
-  }, [text]);
+  }
 
   useEffect(() => {
     if (displayedText.length < text.length) {
@@ -167,8 +181,10 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [history, setHistory] = useState([]);
   const [isThinking, setIsThinking] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
   const [currentStep, setCurrentStep] = useState('');
   const scrollRef = useRef(null);
+  const runLock = useRef(false);
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -196,7 +212,7 @@ function App() {
   };
 
   const handleCommand = async (input) => {
-    if (!input.trim()) return;
+    if (!input.trim() || runLock.current) return;
     const fullInput = input.trim();
     const inputLower = fullInput.toLowerCase();
     
@@ -225,107 +241,146 @@ function App() {
     setMatches([]);
     
     setIsThinking(true);
-    
-    // Skip thinking for /clear command
-    if (identifiedCommand !== '/clear') {
-      // Thinking simulation steps
-      const steps = THINKING_STEPS;
-      for (const step of steps) {
-        setCurrentStep(step);
-        await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
-      }
+    const isBlog = identifiedCommand === '/blog';
+    if (isBlog) {
+      runLock.current = true;
+      setIsBusy(true);
     }
+    const blogStartedAt = performance.now();
 
-    let response = [];
-
-    if (identifiedCommand && identifiedCommand !== '/clear') {
-      const intro = AI_INTRO_STATEMENTS[Math.floor(Math.random() * AI_INTRO_STATEMENTS.length)];
-      response.push({ type: 'system', content: intro });
-    }
-
-    if (identifiedCommand === '/help') {
-      response.push({ type: 'header', content: UI_STRINGS.AVAILABLE_COMMANDS_LABEL });
-      Object.entries(COMMAND_LIST).forEach(([c, cmdData]) => {
-        response.push({ type: 'info', content: `${c.padEnd(12)} - ${cmdData.description}` });
-      });
-    } else if (identifiedCommand === '/about') {
-      response.push({ type: 'header', content: UI_STRINGS.BIO_LABEL });
-      response.push({ type: 'info', content: UI_STRINGS.BIO_CONTENT });
-      response.push({ type: 'header', content: UI_STRINGS.EXPERTISE_LABEL });
-      response.push({ type: 'info', content: UI_STRINGS.EXPERTISE_CONTENT });
-    } else if (identifiedCommand === '/projects') {
-      response.push({ type: 'header', content: UI_STRINGS.RECENT_PROJECTS_LABEL });
-      PROJECTS.forEach(p => {
-        response.push({ 
-          type: 'project', 
-          name: p.name, 
-          description: p.description,
-          link: p.link 
-        });
-      });
-    } else if (identifiedCommand === '/contact') {
-      response.push({ type: 'header', content: UI_STRINGS.SOCIAL_LABEL });
-      SOCIAL_LINKS.forEach(link => {
-        response.push({ type: 'link', label: link.label, value: link.value });
-      });
-    } else if (identifiedCommand === '/contributions') {
-      try {
-        const excludeQuery = EXCLUDED_ORGS.map(org => `-user:${org}`).join('+');
-        const query = `author:miladibra10+is:public+is:pr+-user:miladibra10+${excludeQuery}`;
-        const res = await fetch(`https://api.github.com/search/issues?q=${query}&per_page=100`);
-        const data = await res.json();
-        
-        if (data.items && data.items.length > 0) {
-          response.push({ type: 'header', content: UI_STRINGS.CONTRIBUTIONS_LABEL });
-          data.items.forEach(item => {
-            // Extract repo name from repository_url or html_url
-            const repoName = item.repository_url ? item.repository_url.split('/').slice(-2).join('/') : 'unknown/repo';
-            response.push({ 
-              type: 'project', 
-              name: item.title, 
-              description: `at ${repoName}`,
-              link: item.html_url 
-            });
-          });
-        } else {
-          response.push({ type: 'info', content: 'No contributions found.' });
+    try {
+      // Skip thinking for /clear command
+      if (identifiedCommand !== '/clear') {
+        // Thinking simulation steps
+        const steps = THINKING_STEPS;
+        for (const step of steps) {
+          setCurrentStep(step);
+          const stepDelay = isBlog ? BLOG_THINKING_STEP_MS : 600 + Math.random() * 400;
+          await new Promise(r => setTimeout(r, stepDelay));
         }
-      } catch (err) {
-        response.push({ type: 'error', content: `${UI_STRINGS.SYSTEM_NOTIFICATION_PREFIX} Failed to fetch contributions: ${err.message}` });
       }
-    } else if (identifiedCommand === '/clear') {
-      setHistory([]);
+
+      let response = [];
+
+      if (identifiedCommand && identifiedCommand !== '/clear' && !isBlog) {
+        const intro = AI_INTRO_STATEMENTS[Math.floor(Math.random() * AI_INTRO_STATEMENTS.length)];
+        response.push({ type: 'system', content: intro });
+      }
+
+      if (identifiedCommand === '/help') {
+        response.push({ type: 'header', content: UI_STRINGS.AVAILABLE_COMMANDS_LABEL });
+        Object.entries(COMMAND_LIST).forEach(([c, cmdData]) => {
+          response.push({ type: 'info', content: `${c.padEnd(12)} - ${cmdData.description}` });
+        });
+      } else if (identifiedCommand === '/about') {
+        response.push({ type: 'header', content: UI_STRINGS.BIO_LABEL });
+        response.push({ type: 'info', content: UI_STRINGS.BIO_CONTENT });
+        response.push({ type: 'header', content: UI_STRINGS.EXPERTISE_LABEL });
+        response.push({ type: 'info', content: UI_STRINGS.EXPERTISE_CONTENT });
+      } else if (identifiedCommand === '/projects') {
+        response.push({ type: 'header', content: UI_STRINGS.RECENT_PROJECTS_LABEL });
+        PROJECTS.forEach(p => {
+          response.push({ 
+            type: 'project', 
+            name: p.name, 
+            description: p.description,
+            link: p.link 
+          });
+        });
+      } else if (identifiedCommand === '/contact') {
+        response.push({ type: 'header', content: UI_STRINGS.SOCIAL_LABEL });
+        SOCIAL_LINKS.forEach(link => {
+          response.push({ type: 'link', label: link.label, value: link.value });
+        });
+      } else if (identifiedCommand === '/contributions') {
+        try {
+          const excludeQuery = EXCLUDED_ORGS.map(org => `-user:${org}`).join('+');
+          const query = `author:miladibra10+is:public+is:pr+-user:miladibra10+${excludeQuery}`;
+          const res = await fetch(`https://api.github.com/search/issues?q=${query}&per_page=100`);
+          const data = await res.json();
+        
+          if (data.items && data.items.length > 0) {
+            response.push({ type: 'header', content: UI_STRINGS.CONTRIBUTIONS_LABEL });
+            data.items.forEach(item => {
+              // Extract repo name from repository_url or html_url
+              const repoName = item.repository_url ? item.repository_url.split('/').slice(-2).join('/') : 'unknown/repo';
+              response.push({ 
+                type: 'project', 
+                name: item.title, 
+                description: `at ${repoName}`,
+                link: item.html_url 
+              });
+            });
+          } else {
+            response.push({ type: 'info', content: 'No contributions found.' });
+          }
+        } catch (err) {
+          response.push({ type: 'error', content: `${UI_STRINGS.SYSTEM_NOTIFICATION_PREFIX} Failed to fetch contributions: ${err.message}` });
+        }
+      } else if (isBlog) {
+        response.push({ type: 'system', content: UI_STRINGS.BLOG_REDIRECT_MESSAGE });
+      } else if (identifiedCommand === '/clear') {
+        setHistory([]);
+        setIsThinking(false);
+        setTokenCount(0);
+        return;
+      } else {
+        setCurrentStep(FALLBACK_STEPS.VERIFYING);
+        await new Promise(r => setTimeout(r, 1200));
+        setCurrentStep(FALLBACK_STEPS.FALLBACK);
+        await new Promise(r => setTimeout(r, 1000));
+
+        const joke = FUNNY_RESPONSES[Math.floor(Math.random() * FUNNY_RESPONSES.length)];
+        response.push({ type: 'error', content: `${UI_STRINGS.SYSTEM_NOTIFICATION_PREFIX} ${joke}` });
+      }
+
       setIsThinking(false);
-      setTokenCount(0);
-      return;
-    } else {
-      setCurrentStep(FALLBACK_STEPS.VERIFYING);
-      await new Promise(r => setTimeout(r, 1200));
-      setCurrentStep(FALLBACK_STEPS.FALLBACK);
-      await new Promise(r => setTimeout(r, 1000));
-
-      const joke = FUNNY_RESPONSES[Math.floor(Math.random() * FUNNY_RESPONSES.length)];
-      response.push({ type: 'error', content: `${UI_STRINGS.SYSTEM_NOTIFICATION_PREFIX} ${joke}` });
-    }
-
-    setIsThinking(false);
     
-    // If there is an intro, wait for it to finish typing before showing the rest
-    for (let i = 0; i < response.length; i++) {
-      const msg = response[i];
-      setHistory(prev => [...prev, msg]);
+      // If there is an intro, wait for it to finish typing before showing the rest
+      for (let i = 0; i < response.length; i++) {
+        const msg = response[i];
+        setHistory(prev => [...prev, msg]);
       
-      // Calculate delay: text length * speed + 200ms buffer
-      // Default speed is 30, but different types have different speeds
-      let typingSpeed = 20;
-      if (msg.type === 'header') typingSpeed = 20;
-      if (msg.type === 'info') typingSpeed = 25;
+        // Calculate delay: text length * speed + 200ms buffer
+        // Default speed is 30, but different types have different speeds
+        let typingSpeed = 20;
+        if (msg.type === 'header') typingSpeed = 20;
+        if (msg.type === 'info') typingSpeed = 25;
       
-      const textLength = msg.content ? msg.content.length : 0;
-      let waitTime = (textLength * typingSpeed) + 200;
-      if (msg.type === 'error') waitTime = 0;
+        const textLength = msg.content ? msg.content.length : 0;
+        let waitTime = (textLength * typingSpeed) + 200;
+        if (msg.type === 'error') waitTime = 0;
       
-      await new Promise(r => setTimeout(r, waitTime));
+        await new Promise(r => setTimeout(r, waitTime));
+      }
+
+      if (isBlog) {
+        const elapsed = performance.now() - blogStartedAt;
+        const progressWait = Math.min(
+          BLOG_REDIRECT_DELAY_MS,
+          Math.max(0, BLOG_TAB_DEADLINE_MS - elapsed)
+        );
+        setIsThinking(true);
+        setCurrentStep(BLOG_REDIRECT_STEP);
+        await new Promise(r => setTimeout(r, progressWait));
+
+        const blogTab = window.open(BLOG_URL, '_blank');
+        if (blogTab) {
+          try {
+            blogTab.opener = null;
+          } catch {
+            // The new tab may already be cross-origin.
+          }
+        } else {
+          setHistory(prev => [...prev, { type: 'link', label: 'BLOG', value: BLOG_URL }]);
+        }
+        setIsThinking(false);
+      }
+    } finally {
+      if (isBlog) {
+        runLock.current = false;
+        setIsBusy(false);
+      }
     }
   };
 
@@ -491,7 +546,7 @@ function App() {
                     RUNNING: {currentStep}...
                   </div>
                   <div className="text-xs text-white/40 italic">
-                    {UI_STRINGS.THINKING_SUBTEXT}
+                    {currentStep === BLOG_REDIRECT_STEP ? UI_STRINGS.BLOG_PROGRESS_SUBTEXT : UI_STRINGS.THINKING_SUBTEXT}
                   </div>
                 </div>
               </motion.div>
@@ -574,7 +629,7 @@ function App() {
                         e.preventDefault();
                         const index = selectedIndex === -1 ? 0 : selectedIndex;
                         handleCommand(matches[index]);
-                      } else if (!isThinking) {
+                      } else if (!isThinking && !isBusy) {
                         handleCommand(inputValue);
                       }
                     }
@@ -588,8 +643,8 @@ function App() {
                 )}
               </div>
               <button 
-                onClick={() => !isThinking && handleCommand(inputValue)}
-                disabled={isThinking || !inputValue.trim()}
+                onClick={() => !isThinking && !isBusy && handleCommand(inputValue)}
+                disabled={isThinking || isBusy || !inputValue.trim()}
                 className="pr-4 text-white/20 hover:text-blue-400 disabled:opacity-0 transition-all"
               >
                 <Send size={16} />
